@@ -25,7 +25,15 @@ char generateLane() {
 }
 
 int main() {
-    FILE* file = fopen(FILENAME, "a");
+
+      FILE* file = fopen(FILENAME, "w"); 
+    if (!file) {
+        perror("Error opening file");
+        return 1;
+    }
+    fclose(file); 
+
+   file = fopen(FILENAME, "a");
     if (!file) {
         perror("Error opening file");
         return 1;

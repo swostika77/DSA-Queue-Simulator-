@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include<time.h>
 
 #define VEHICLE_FILE "vehicles.data"
 #define MAX_LINE 100
@@ -54,6 +55,12 @@ int isEmpty(Queue* q) {
 }
 
 int main() {
+    srand(time(NULL));
+    Queue AL1, AL2, AL3;
+    initQueue(&AL1);
+    initQueue(&AL2);
+    initQueue(&AL3);
+
     Queue laneA, laneB, laneC, laneD;
     initQueue(&laneA);
     initQueue(&laneB);
@@ -76,26 +83,37 @@ int main() {
 
         fseek(file, lastPos, SEEK_SET);
 
-        // Read new lines and enqueue to appropriate lane
-        while (fgets(line, sizeof(line), file)) {
-            line[strcspn(line, "\n")] = 0; // Remove newline
-            char vehicle[20], lane;
-            if (sscanf(line, "%[^:]:%c", vehicle, &lane) == 2) {
-                switch(lane) {
-                    case 'A': enqueue(&laneA, vehicle); break;
-                    case 'B': enqueue(&laneB, vehicle); break;
-                    case 'C': enqueue(&laneC, vehicle); break;
-                    case 'D': enqueue(&laneD, vehicle); break;
+        while(fgets(line,sizeof(line),file)){
+            line[strcspn(line,"\n")]=0;
+            char vehicle[20],road;
+            if(sscanf(line,"%[^:]:%c", vehicle, &road)==2){
+                switch(road){
+                    case 'A': {
+                        int laneNum=rand()%3;
+                        if(laneNum==0) enqueue(&AL1,vehicle);
+                        else if (laneNum==1) enqueue(&AL2,vehicle);
+                        else enqueue(&AL3,vehicle);
+                        break;
+                    }
+                    case 'B': enqueue(&laneB,vehicle);
+                    break;
+                    case 'C': enqueue(&laneC,vehicle);
+                    break;
+                    case 'D': enqueue(&laneD,vehicle);
+                    break;
                 }
+
             }
         }
-
-        lastPos = ftell(file); // Update last read position
+        
+        lastPos = ftell(file);
         fclose(file);
-
-        // Dequeue one vehicle per lane
+        
         char* v;
-        if ((v = dequeue(&laneA)) != NULL) printf("Dequeued from lane A: %s\n", v);
+        if ((v = dequeue(&AL1)) != NULL) printf("Dequeued from AL1: %s\n", v);
+        if ((v = dequeue(&AL2)) != NULL) printf("Dequeued from AL2: %s\n", v);
+        if ((v = dequeue(&AL3)) != NULL) printf("Dequeued from AL3: %s\n", v);
+
         if ((v = dequeue(&laneB)) != NULL) printf("Dequeued from lane B: %s\n", v);
         if ((v = dequeue(&laneC)) != NULL) printf("Dequeued from lane C: %s\n", v);
         if ((v = dequeue(&laneD)) != NULL) printf("Dequeued from lane D: %s\n", v);

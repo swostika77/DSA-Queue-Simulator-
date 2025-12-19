@@ -25,15 +25,16 @@ char generateLane() {
 }
 
 int main() {
-
-      FILE* file = fopen(FILENAME, "w"); 
+    // First, create/clear the file
+    FILE* file = fopen(FILENAME, "w");
     if (!file) {
         perror("Error opening file");
         return 1;
     }
-    fclose(file); 
+    fclose(file);
 
-   file = fopen(FILENAME, "a");
+    // Open in append mode
+    file = fopen(FILENAME, "a");
     if (!file) {
         perror("Error opening file");
         return 1;
@@ -44,13 +45,18 @@ int main() {
     while (1) {
         char vehicle[9];
         generateVehicleNumber(vehicle);
-        char lane = generateLane();
+
+        char lane;
+        int r = rand() % 10;
+        if (r < 5) lane = 'A';      // 50% chance AL2 (priority lane)
+        else lane = generateLane(); 
 
         // Write to file
         fprintf(file, "%s:%c\n", vehicle, lane);
         fflush(file); // Ensure data is written immediately
 
-        printf("Generated: %s:%c\n", vehicle, lane); // Print to console
+        // Print to console
+        printf("Generated: %s:%c\n", vehicle, lane);
 
         sleep(1); // Wait 1 second before generating next entry
     }

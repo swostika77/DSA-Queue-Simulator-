@@ -22,6 +22,7 @@ typedef struct Queue {
 
 // Queue functions
 void initQueue(Queue* q) { q->front = q->rear = NULL; q->size = 0; }
+
 void enqueue(Queue* q, const char* vehicle) {
     Node* newNode = (Node*)malloc(sizeof(Node));
     strcpy(newNode->vehicle, vehicle);
@@ -31,27 +32,32 @@ void enqueue(Queue* q, const char* vehicle) {
     q->size++;
 }
 char* dequeue(Queue* q) {
-    if (q->front == NULL) return NULL;
+    static char v[20];
+    if (!q->front) return NULL;
+
     Node* temp = q->front;
-    static char vehicle[20];
-    strcpy(vehicle, temp->vehicle);
-    q->front = q->front->next;
-    if (q->front == NULL) q->rear = NULL;
+    strcpy(v, temp->vehicle);
+
+    q->front = temp->next;
+    if (!q->front) q->rear = NULL;
+
     free(temp);
     q->size--;
-    return vehicle;
+    return v;
 }
+
 int isEmpty(Queue* q) { return q->size == 0; }
 
 // Main function
 int main() {
-    srand(time(NULL));
+   // srand(time(NULL));
 
     // Initialize queues
     Queue AL1, AL2, AL3, BL1, BL2, BL3, CL1, CL2, CL3, DL1, DL2, DL3;
-    Queue* queues[] = {&AL1,&AL2,&AL3,&BL1,&BL2,&BL3,&CL1,&CL2,&CL3,&DL1,&DL2,&DL3};
-    const char* names[] = {"AL1","AL2","AL3","BL1","BL2","BL3","CL1","CL2","CL3","DL1","DL2","DL3"};
-    for(int i=0;i<12;i++) initQueue(queues[i]);
+      initQueue(&AL1); initQueue(&AL2); initQueue(&AL3);
+    initQueue(&BL1); initQueue(&BL2); initQueue(&BL3);
+    initQueue(&CL1); initQueue(&CL2); initQueue(&CL3);
+    initQueue(&DL1); initQueue(&DL2); initQueue(&DL3);
 
     long lastPos = 0;
     char line[MAX_LINE];
@@ -67,12 +73,23 @@ int main() {
             while(fgets(line,sizeof(line),file)){
                 char vehicle[20], road;
                 sscanf(line,"%[^:]:%c", vehicle, &road);
-                int lane = rand()%5; // Random lane assignment
+
+                int lane;// Random lane assignment
                 if(road=='A'){
-                    if(lane==0) enqueue(&AL1, vehicle);
-                    else if(lane<=3) enqueue(&AL2, vehicle);
-                    else enqueue(&AL3, vehicle);
-                } else if(road=='B'){
+                    int r = rand() % 100;
+                    if (r < 70) lane = 1;  // 70% → AL2 (priority lane)
+                    else if (r < 85)  lane = 0;  // 15% → AL1
+                       else lane = 2;  // 15% → AL3
+                        } else {
+                              lane = rand() % 3;
+                            }
+                              if (road == 'A') {
+                                if (lane == 0) enqueue(&AL1, vehicle);
+                                else if (lane == 1) enqueue(&AL2, vehicle);
+                                else enqueue(&AL3, vehicle);
+                              }
+                   
+                     else if(road=='B'){
                     if(lane==0) enqueue(&BL1, vehicle);
                     else if(lane==1) enqueue(&BL2, vehicle);
                     else enqueue(&BL3, vehicle);
@@ -92,19 +109,23 @@ int main() {
 
         // Check priority lane AL2
         if(AL2.size > 10) priorityMode = 1;
-        if(AL2.size < 5) priorityMode = 0;
+        else if(AL2.size < 5) priorityMode = 0;
 
         printf("\n--- New Cycle ---\n");
+           printf("AL2 size = %d | Priority = %s\n",
+               AL2.size, priorityMode ? "ON" : "OFF");
 
-        // Priority mode: serve AL2 until size < 5
-        if(priorityMode && !isEmpty(&AL2)) {
-            printf("Priority Mode: Serving AL2\n");
-            while(!isEmpty(&AL2) && AL2.size >= 5) {
-                char* v = dequeue(&AL2);
-                printf("Dequeued from AL2: %s (Remaining %d)\n", v, AL2.size);
-                sleep(1); // simulate time to pass one vehicle
-            }
-        }
+
+       if (priorityMode) {
+    printf("Priority Mode ACTIVE: Serving ONLY AL2\n");
+    while (!isEmpty(&AL2) && AL2.size >= 5) {
+        printf("Dequeued from AL2: %s (Remaining %d)\n",
+               dequeue(&AL2), AL2.size);
+        sleep(1);
+    }
+    if(AL2.size < 5) priorityMode = 0;
+    continue;// Skip normal queues completely
+}
 
         // Normal mode: serve other lanes fairly
         Queue* normalQueues[] = {&AL1,&AL3,&BL1,&BL2,&BL3,&CL1,&CL2,&CL3,&DL1,&DL2,&DL3};
@@ -112,16 +133,14 @@ int main() {
 
         for(int i=0;i<11;i++){ // 11 because AL2 is priority
             if(!isEmpty(normalQueues[i])){
-                char* v = dequeue(normalQueues[i]);
-                printf("Dequeued from %s: %s (Remaining %d)\n", normalNames[i], v, normalQueues[i]->size);
+                printf("Dequeued from %s: %s (Remaining %d)\n", normalNames[i], dequeue(normalQueues[i]), normalQueues[i]->size);
                 sleep(1); // simulate passing time
             }
         }
 
         // AL2 normal dequeue if not in priority mode
         if(!priorityMode && !isEmpty(&AL2)){
-            char* v = dequeue(&AL2);
-            printf("Dequeued from AL2: %s (Remaining %d)\n", v, AL2.size);
+            printf("Dequeued from AL2: %s (Remaining %d)\n", dequeue(&AL2),AL2.size);
             sleep(1);
         }
     }

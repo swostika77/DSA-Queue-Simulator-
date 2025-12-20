@@ -5,6 +5,11 @@
 
 #define FILENAME "vehicles.data"
 
+void clearFile() {
+    FILE* file = fopen(FILENAME, "w");
+    if (file) fclose(file);
+}
+
 // Function to generate a random vehicle number
 void generateVehicleNumber(char* buffer) {
     buffer[0] = 'A' + rand() % 26;
@@ -21,23 +26,22 @@ void generateVehicleNumber(char* buffer) {
 // Function to generate a random lane
 char generateLane() {
     char lanes[] = {'A', 'B', 'C', 'D'};
-    return lanes[rand() % 3];
+    return lanes[rand() % 4];
 }
 
 int main() {
     
     FILE* file;
 
-    srand(time(NULL)); // Initialize random seed
+    srand(time(NULL)^getpid());
+    clearFile(); // Initialize random seed
+    printf("Traffic Generator Started....\n");
 
     while (1) {
         char vehicle[9];
         generateVehicleNumber(vehicle);
 
-        char lane;
-        int r = rand() % 10;
-        if (r < 2) lane = 'A';      // 50% chance AL2 (priority lane)
-        else lane = generateLane(); 
+        char lane=generateLane();
 
          file = fopen(FILENAME, "a");
         if (!file) {

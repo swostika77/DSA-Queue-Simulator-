@@ -30,11 +30,14 @@ char generateLane() {
 }
 
 int main() {
-    
-    FILE* file;
 
     srand(time(NULL)^getpid());
     clearFile(); // Initialize random seed
+       FILE* file=fopen(FILENAME,"a");
+       if(!file){
+        perror("Error opening the file");
+        return 1;
+       }
     printf("Traffic Generator Started....\n");
 
     while (1) {
@@ -43,21 +46,14 @@ int main() {
 
         char lane=generateLane();
 
-         file = fopen(FILENAME, "a");
-        if (!file) {
-            perror("Error opening file");
-            return 1;
-        }
-
         // Write to file
         fprintf(file, "%s:%c\n", vehicle, lane);
         fflush(file); // Ensure data is written immediately
-
-        // Print to console
         printf("Generated: %s:%c\n", vehicle, lane);
 
         sleep(1); // Wait 1 second before generating next entry
     }
+    fclose(file);
 
     return 0;
 }

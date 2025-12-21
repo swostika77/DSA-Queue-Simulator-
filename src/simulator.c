@@ -6,6 +6,7 @@
 
 #define VEHICLE_FILE "vehicles.data"
 #define MAX_LINE 100
+#define TIME_PER_VEHICLE 1
 
 // Queue node structure
 typedef struct Node {
@@ -59,8 +60,6 @@ int isEmpty(Queue* q) {
     return q->size == 0;
 }
 
-typedef enum { RED, GREEN } LightState; 
-
 void nextGreenRoad(char* road) {
     if (*road == 'A') *road = 'B';
     else if (*road == 'B') *road = 'C';
@@ -82,7 +81,7 @@ int main() {
     long lastPos = 0;
     char line[MAX_LINE];
     int priorityMode = 0;
-      char currentGreenRoad = 'A';  
+    char currentGreenRoad = 'A';  
 
     printf("Simulator running...\n");
 
@@ -135,19 +134,20 @@ int main() {
         else if (AL2.size < 5) priorityMode = 0;
 
         printf("\n--- New Cycle ---\n");
-        printf("AL2 size = %d | Priority = %s\n",
-               AL2.size, priorityMode ? "ON" : "OFF");
+        printf("AL2 size = %d | Priority = %s\n",AL2.size, priorityMode ? "ON" : "OFF");
 
-        /* -------- PRIORITY MODE -------- */
+        int vehiclesdequeuedincycle=0;
+    
         if (priorityMode) {
                currentGreenRoad = 'A';
             printf("Priority Mode ACTIVE: Serving ONLY AL2\n");
             while (!isEmpty(&AL2) && AL2.size >= 5) {
-                printf("Dequeued from AL2: %s (Remaining %d)\n",
-                       dequeue(&AL2), AL2.size);
+                printf("Dequeued from AL2: %s (Remaining %d)\n",dequeue(&AL2), AL2.size);
+                vehiclesdequeuedincycle++;
                 sleep(1);
             }
-            continue; // skip normal lanes
+            printf("Total Green light time this cycle:%d seconds\n",vehiclesdequeuedincycle * TIME_PER_VEHICLE);
+            continue;
         }
               printf("Current GREEN Road: %c\n", currentGreenRoad);
 
@@ -159,13 +159,35 @@ int main() {
         else if (currentGreenRoad == 'C') { currentQueues[0] = &CL1; currentQueues[1] = &CL2; currentQueues[2] = &CL3; currentNames[0]="CL1"; currentNames[1]="CL2"; currentNames[2]="CL3";}
         else if (currentGreenRoad == 'D') { currentQueues[0] = &DL1; currentQueues[1] = &DL2; currentQueues[2] = &DL3; currentNames[0]="DL1"; currentNames[1]="DL2"; currentNames[2]="DL3";}
 
+        int totalvehicles=0;
+        for (int i=0; i<3;i++)
+        {
+            totalvehicles+=currentQueues[i]->size;
+        }
+
+        int vehicletoserve[3];
+        for(int i=0;i<3;i++){
+            if(totalvehicles==0)vehicletoserve[i]=0;
+            else vehicletoserve[i]=totalvehicles/3;
+
+            if(vehicletoserve[i]>currentQueues[i]->size)
+            vehicletoserve[i]=currentQueues[i]->size;
+
+            if(vehicletoserve[i]<1 && currentQueues[i]->size >0)
+            vehicletoserve[i]=1;
+                }
+
         // Serve 1 vehicle per lane
         for (int i = 0; i < 3; i++) {
+            for(int j=0; j<vehicletoserve[i];j++){
             if (!isEmpty(currentQueues[i])) {
                 printf("Dequeued from %s: %s (Remaining %d)\n", currentNames[i], dequeue(currentQueues[i]), currentQueues[i]->size);
-                sleep(1);
+                vehiclesdequeuedincycle++;
+                sleep(1);}
             }
         }
+
+        printf("Total Green light time for this cycle :%d seconds\n",vehiclesdequeuedincycle*TIME_PER_VEHICLE);
 
         // Rotate to next GREEN road
         nextGreenRoad(&currentGreenRoad);

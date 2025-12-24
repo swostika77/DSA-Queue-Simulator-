@@ -13,16 +13,18 @@
 #define VEH_W 30
 #define VEH_H 20
 #define SPEED 2
-#define GREEN_TIME 300
 #define SPAWN_INTERVAL 10 // frames between checking file
+#define TIME_PER_VEHICLE 100 // ms per vehicle
+#define MIN_GREEN_TIME 300    // minimum green time for visibility
 
 typedef enum { RED, GREEN } Light;
 
 typedef struct Vehicle {
     float x, y;
     float dx, dy;
-    char road;
-    int turned;
+    char road;       // original road
+    int lane;        // 0 = left-turn, 1 = middle-straight
+    int turned;      // has passed intersection
     struct Vehicle* next;
 } Vehicle;
 
@@ -31,6 +33,7 @@ Vehicle* head = NULL;
 /* Traffic lights */
 Light lightA = GREEN, lightB = RED, lightC = RED, lightD = RED;
 int lightTimer = 0;
+int GREEN_TIME = 300;
 char currentRoad = 'A';
 
 #define STOP_A (H/2 - ROAD_W/2 - 5)
@@ -39,25 +42,57 @@ char currentRoad = 'A';
 #define STOP_D (W/2 + ROAD_W/2 + 5)
 
 /* Add vehicle to simulation */
-void addVehicle(char r) {
+void addVehicle(char r, int lane) {
     Vehicle* v = malloc(sizeof(Vehicle));
     v->road = r;
+    v->lane = lane;
     v->turned = 0;
 
-    if(r=='A'){ v->x=W/2-ROAD_W/2+2*LANE_W+(LANE_W-VEH_W)/2; v->y=-VEH_H; v->dx=0; v->dy=SPEED;}
-    if(r=='B'){ v->x=W/2-ROAD_W/2+(LANE_W-VEH_W)/2; v->y=H; v->dx=0; v->dy=-SPEED;}
-    if(r=='C'){ v->x=-VEH_W; v->y=H/2-ROAD_W/2+(LANE_W-VEH_H)/2; v->dx=SPEED; v->dy=0;}
-    if(r=='D'){ v->x=W; v->y=H/2-ROAD_W/2+2*LANE_W+(LANE_W-VEH_H)/2; v->dx=-SPEED; v->dy=0;}
+    if(lane == 0){ // left-turn lane
+        if(r=='A'){ v->x=W/2-ROAD_W/2+2*LANE_W+(LANE_W-VEH_W)/2; v->y=-VEH_H; v->dx=0; v->dy=SPEED;}
+        if(r=='B'){ v->x=W/2-ROAD_W/2+(LANE_W-VEH_W)/2; v->y=H; v->dx=0; v->dy=-SPEED;}
+        if(r=='C'){ v->x=-VEH_W; v->y=H/2-ROAD_W/2+(LANE_W-VEH_H)/2; v->dx=SPEED; v->dy=0;}
+        if(r=='D'){ v->x=W; v->y=H/2-ROAD_W/2+2*LANE_W+(LANE_W-VEH_H)/2; v->dx=-SPEED; v->dy=0;}
+    }
+    else if(lane == 1){ // middle lane straight
+        if(r=='A'){ v->x=W/2-ROAD_W/2+LANE_W+(LANE_W-VEH_W)/2; v->y=-VEH_H; v->dx=0; v->dy=SPEED;}
+        if(r=='B'){ v->x=W/2-ROAD_W/2+LANE_W+(LANE_W-VEH_W)/2; v->y=H; v->dx=0; v->dy=-SPEED;}
+        if(r=='C'){ v->x=-VEH_W; v->y=H/2-ROAD_W/2+LANE_W+(LANE_W-VEH_H)/2; v->dx=SPEED; v->dy=0;}
+        if(r=='D'){ v->x=W; v->y=H/2-ROAD_W/2+LANE_W+(LANE_W-VEH_H)/2; v->dx=-SPEED; v->dy=0;}
+    }
 
     v->next = head;
     head = v;
 }
 
-/* Update traffic lights */
+/* Count vehicles in a specific road/lane type before intersection */
+int countVehicles(char road, int laneType){
+    Vehicle* v = head;
+    int count = 0;
+    while(v){
+        if(v->road == road && v->lane == laneType && !v->turned)
+            count++;
+        v = v->next;
+    }
+    return count;
+}
+
+/* Update traffic lights with dynamic green time */
 void updateLights() {
     lightTimer++;
-    if(lightTimer<GREEN_TIME) return;
-    lightTimer=0;
+    if(lightTimer < GREEN_TIME) return;
+
+    // Compute number of vehicles in current road's normal lanes
+    int total = countVehicles(currentRoad,0) + countVehicles(currentRoad,1);
+    int n = 2; // left + middle lanes
+    int V = (n>0) ? total/n : 1;
+
+// Green time calculation based on vehicles
+    GREEN_TIME = V * TIME_PER_VEHICLE;
+    if(GREEN_TIME < MIN_GREEN_TIME) GREEN_TIME = MIN_GREEN_TIME; // minimum green
+
+    // Reset timer and switch lights
+    lightTimer = 0;
     lightA=lightB=lightC=lightD=RED;
     if(currentRoad=='A'){ currentRoad='B'; lightB=GREEN; }
     else if(currentRoad=='B'){ currentRoad='C'; lightC=GREEN; }
@@ -65,29 +100,44 @@ void updateLights() {
     else { currentRoad='A'; lightA=GREEN; }
 }
 
-/* Move vehicles */
+// Move vehicles
 void moveVehicles() {
     Vehicle* v=head;
     Vehicle* prev=NULL;
+
     while(v){
         int stop=0;
+
+        // Stop at red light ONLY if vehicle has not passed intersection
         if(!v->turned){
             if(v->road=='A' && lightA==RED && v->y+VEH_H>=STOP_A) stop=1;
             if(v->road=='B' && lightB==RED && v->y<=STOP_B) stop=1;
             if(v->road=='C' && lightC==RED && v->x+VEH_W>=STOP_C) stop=1;
             if(v->road=='D' && lightD==RED && v->x<=STOP_D) stop=1;
         }
-        if(!stop){ v->x+=v->dx; v->y+=v->dy; }
 
-        // Turn at intersection
-        if(!v->turned){
+        if(!stop){
+            v->x += v->dx;
+            v->y += v->dy;
+        }
+
+        // Left-turn vehicles: turn at intersection
+        if(!v->turned && v->lane==0){
             if(v->road=='A' && v->y>=H/2-ROAD_W/2){ v->dx=SPEED; v->dy=0; v->y=H/2-ROAD_W/2+LANE_W/2; v->turned=1;}
             if(v->road=='B' && v->y<=H/2+ROAD_W/2){ v->dx=-SPEED; v->dy=0; v->y=H/2-ROAD_W/2+2*LANE_W+LANE_W/2; v->turned=1;}
             if(v->road=='C' && v->x>=W/2-ROAD_W/2){ v->dx=0; v->dy=-SPEED; v->x=W/2-ROAD_W/2+LANE_W/2; v->turned=1;}
             if(v->road=='D' && v->x<=W/2+ROAD_W/2){ v->dx=0; v->dy=SPEED; v->x=W/2-ROAD_W/2+2*LANE_W+LANE_W/2; v->turned=1;}
         }
 
-        // Remove if out of window
+        // Middle-lane vehicles: mark as "passed intersection" once reached center
+        if(!v->turned && v->lane==1){
+            if(v->road=='A' && v->y>=H/2-ROAD_W/2) v->turned=1;
+            if(v->road=='B' && v->y<=H/2+ROAD_W/2) v->turned=1;
+            if(v->road=='C' && v->x>=W/2-ROAD_W/2) v->turned=1;
+            if(v->road=='D' && v->x<=W/2+ROAD_W/2) v->turned=1;
+        }
+
+        // Remove vehicles that leave screen
         int remove=0;
         if(v->x>W||v->x<-VEH_W||v->y>H||v->y<-VEH_H) remove=1;
         if(remove){
@@ -127,14 +177,31 @@ void drawVehicles(SDL_Renderer* r){
 
 void drawLights(SDL_Renderer* r){
     SDL_Color c;
-    c=(lightA==GREEN)?(SDL_Color){0,255,0,255}:(SDL_Color){255,0,0,255};
-    SDL_SetRenderDrawColor(r,c.r,c.g,c.b,255); SDL_Rect la={W/2-10,STOP_A-20,20,20}; SDL_RenderFillRect(r,&la);
-    c=(lightB==GREEN)?(SDL_Color){0,255,0,255}:(SDL_Color){255,0,0,255};
-    SDL_SetRenderDrawColor(r,c.r,c.g,c.b,255); SDL_Rect lb={W/2-10,STOP_B,20,20}; SDL_RenderFillRect(r,&lb);
-    c=(lightC==GREEN)?(SDL_Color){0,255,0,255}:(SDL_Color){255,0,0,255};
-    SDL_SetRenderDrawColor(r,c.r,c.g,c.b,255); SDL_Rect lc={STOP_C-20,H/2-10,20,20}; SDL_RenderFillRect(r,&lc);
-    c=(lightD==GREEN)?(SDL_Color){0,255,0,255}:(SDL_Color){255,0,0,255};
-    SDL_SetRenderDrawColor(r,c.r,c.g,c.b,255); SDL_Rect ld={STOP_D,H/2-10,20,20}; SDL_RenderFillRect(r,&ld);
+    int offset = 30; // move lights toward junction
+
+    // Road A
+    c = (lightA==GREEN) ? (SDL_Color){0,255,0,255} : (SDL_Color){255,0,0,255};
+    SDL_SetRenderDrawColor(r, c.r, c.g, c.b, 255);
+    SDL_Rect la = { W/2-10, STOP_A + offset, 20, 20 };
+    SDL_RenderFillRect(r, &la);
+
+    // Road B
+    c = (lightB==GREEN) ? (SDL_Color){0,255,0,255} : (SDL_Color){255,0,0,255};
+    SDL_SetRenderDrawColor(r, c.r, c.g, c.b, 255);
+    SDL_Rect lb = { W/2-10, STOP_B - offset, 20, 20 };
+    SDL_RenderFillRect(r, &lb);
+
+    // Road C
+    c = (lightC==GREEN) ? (SDL_Color){0,255,0,255} : (SDL_Color){255,0,0,255};
+    SDL_SetRenderDrawColor(r, c.r, c.g, c.b, 255);
+    SDL_Rect lc = { STOP_C + offset, H/2-10, 20, 20 };
+    SDL_RenderFillRect(r, &lc);
+
+    // Road D
+    c = (lightD==GREEN) ? (SDL_Color){0,255,0,255} : (SDL_Color){255,0,0,255};
+    SDL_SetRenderDrawColor(r, c.r, c.g, c.b, 255);
+    SDL_Rect ld = { STOP_D - offset, H/2-10, 20, 20 };
+    SDL_RenderFillRect(r, &ld);
 }
 
 /* Read vehicles from file and spawn them */
@@ -146,11 +213,12 @@ int spawnVehiclesFromFile() {
     while(fgets(line,sizeof(line),f)){
         if(strlen(line)<2) continue;
         char road=line[strlen(line)-2]; // A/B/C/D
-        addVehicle(road);
+        int lane = rand()%2; // 0=left, 1=middle
+        addVehicle(road, lane);
         spawned++;
     }
     fclose(f);
-    // Clear file so we don't spawn same vehicles again
+    // Clear file
     f=fopen("vehicles.data","w"); if(f) fclose(f);
     return spawned;
 }

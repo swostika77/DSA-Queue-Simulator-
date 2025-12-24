@@ -1,199 +1,202 @@
+#define SDL_MAIN_HANDLED
+#include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <time.h>
 
-#define VEHICLE_FILE "vehicles.data"
-#define MAX_LINE 100
-#define TIME_PER_VEHICLE 1
+#define W 800
+#define H 800
+#define ROAD_W 180
+#define LANE_W (ROAD_W/3)
 
-// Queue node structure
-typedef struct Node {
-    char vehicle[20];
-    struct Node* next;
-} Node;
+#define VEH_W 30
+#define VEH_H 20
+#define SPEED 2
+#define GREEN_TIME 300
+#define SPAWN_INTERVAL 10 // frames between checking file
 
-// Queue structure
-typedef struct Queue {
-    Node* front;
-    Node* rear;
-    int size;
-} Queue;
+typedef enum { RED, GREEN } Light;
 
-// Queue functions
-void initQueue(Queue* q) {
-    q->front = q->rear = NULL;
-    q->size = 0;
+typedef struct Vehicle {
+    float x, y;
+    float dx, dy;
+    char road;
+    int turned;
+    struct Vehicle* next;
+} Vehicle;
+
+Vehicle* head = NULL;
+
+/* Traffic lights */
+Light lightA = GREEN, lightB = RED, lightC = RED, lightD = RED;
+int lightTimer = 0;
+char currentRoad = 'A';
+
+#define STOP_A (H/2 - ROAD_W/2 - 5)
+#define STOP_B (H/2 + ROAD_W/2 + 5)
+#define STOP_C (W/2 - ROAD_W/2 - 5)
+#define STOP_D (W/2 + ROAD_W/2 + 5)
+
+/* Add vehicle to simulation */
+void addVehicle(char r) {
+    Vehicle* v = malloc(sizeof(Vehicle));
+    v->road = r;
+    v->turned = 0;
+
+    if(r=='A'){ v->x=W/2-ROAD_W/2+2*LANE_W+(LANE_W-VEH_W)/2; v->y=-VEH_H; v->dx=0; v->dy=SPEED;}
+    if(r=='B'){ v->x=W/2-ROAD_W/2+(LANE_W-VEH_W)/2; v->y=H; v->dx=0; v->dy=-SPEED;}
+    if(r=='C'){ v->x=-VEH_W; v->y=H/2-ROAD_W/2+(LANE_W-VEH_H)/2; v->dx=SPEED; v->dy=0;}
+    if(r=='D'){ v->x=W; v->y=H/2-ROAD_W/2+2*LANE_W+(LANE_W-VEH_H)/2; v->dx=-SPEED; v->dy=0;}
+
+    v->next = head;
+    head = v;
 }
 
-void enqueue(Queue* q, const char* vehicle) {
-    Node* newNode = (Node*)malloc(sizeof(Node));
-    strcpy(newNode->vehicle, vehicle);
-    newNode->next = NULL;
+/* Update traffic lights */
+void updateLights() {
+    lightTimer++;
+    if(lightTimer<GREEN_TIME) return;
+    lightTimer=0;
+    lightA=lightB=lightC=lightD=RED;
+    if(currentRoad=='A'){ currentRoad='B'; lightB=GREEN; }
+    else if(currentRoad=='B'){ currentRoad='C'; lightC=GREEN; }
+    else if(currentRoad=='C'){ currentRoad='D'; lightD=GREEN; }
+    else { currentRoad='A'; lightA=GREEN; }
+}
 
-    if (q->rear == NULL)
-        q->front = q->rear = newNode;
-    else {
-        q->rear->next = newNode;
-        q->rear = newNode;
+/* Move vehicles */
+void moveVehicles() {
+    Vehicle* v=head;
+    Vehicle* prev=NULL;
+    while(v){
+        int stop=0;
+        if(!v->turned){
+            if(v->road=='A' && lightA==RED && v->y+VEH_H>=STOP_A) stop=1;
+            if(v->road=='B' && lightB==RED && v->y<=STOP_B) stop=1;
+            if(v->road=='C' && lightC==RED && v->x+VEH_W>=STOP_C) stop=1;
+            if(v->road=='D' && lightD==RED && v->x<=STOP_D) stop=1;
+        }
+        if(!stop){ v->x+=v->dx; v->y+=v->dy; }
+
+        // Turn at intersection
+        if(!v->turned){
+            if(v->road=='A' && v->y>=H/2-ROAD_W/2){ v->dx=SPEED; v->dy=0; v->y=H/2-ROAD_W/2+LANE_W/2; v->turned=1;}
+            if(v->road=='B' && v->y<=H/2+ROAD_W/2){ v->dx=-SPEED; v->dy=0; v->y=H/2-ROAD_W/2+2*LANE_W+LANE_W/2; v->turned=1;}
+            if(v->road=='C' && v->x>=W/2-ROAD_W/2){ v->dx=0; v->dy=-SPEED; v->x=W/2-ROAD_W/2+LANE_W/2; v->turned=1;}
+            if(v->road=='D' && v->x<=W/2+ROAD_W/2){ v->dx=0; v->dy=SPEED; v->x=W/2-ROAD_W/2+2*LANE_W+LANE_W/2; v->turned=1;}
+        }
+
+        // Remove if out of window
+        int remove=0;
+        if(v->x>W||v->x<-VEH_W||v->y>H||v->y<-VEH_H) remove=1;
+        if(remove){
+            Vehicle* temp=v;
+            if(prev) prev->next=v->next;
+            else head=v->next;
+            v=v->next;
+            free(temp);
+        } else { prev=v; v=v->next; }
     }
-    q->size++;
 }
 
-char* dequeue(Queue* q) {
-    static char v[20];
-    if (!q->front) return NULL;
+/* Draw functions */
+void drawRoads(SDL_Renderer* r){
+    SDL_SetRenderDrawColor(r,100,100,100,255);
+    SDL_Rect v={W/2-ROAD_W/2,0,ROAD_W,H};
+    SDL_Rect h={0,H/2-ROAD_W/2,W,ROAD_W};
+    SDL_RenderFillRect(r,&v);
+    SDL_RenderFillRect(r,&h);
 
-    Node* temp = q->front;
-    strcpy(v, temp->vehicle);
-
-    q->front = temp->next;
-    if (!q->front) q->rear = NULL;
-
-    free(temp);
-    q->size--;
-    return v;
+    SDL_SetRenderDrawColor(r,255,255,255,255);
+    for(int i=1;i<3;i++){
+        SDL_RenderDrawLine(r,W/2-ROAD_W/2+i*LANE_W,0,W/2-ROAD_W/2+i*LANE_W,H);
+        SDL_RenderDrawLine(r,0,H/2-ROAD_W/2+i*LANE_W,W,H/2-ROAD_W/2+i*LANE_W);
+    }
 }
 
-int isEmpty(Queue* q) {
-    return q->size == 0;
+void drawVehicles(SDL_Renderer* r){
+    SDL_SetRenderDrawColor(r,255,255,255,255);
+    Vehicle* v=head;
+    while(v){
+        SDL_Rect rect={v->x,v->y,VEH_W,VEH_H};
+        SDL_RenderFillRect(r,&rect);
+        v=v->next;
+    }
 }
 
-void nextGreenRoad(char* road) {
-    if (*road == 'A') *road = 'B';
-    else if (*road == 'B') *road = 'C';
-    else if (*road == 'C') *road = 'D';
-    else *road = 'A';
+void drawLights(SDL_Renderer* r){
+    SDL_Color c;
+    c=(lightA==GREEN)?(SDL_Color){0,255,0,255}:(SDL_Color){255,0,0,255};
+    SDL_SetRenderDrawColor(r,c.r,c.g,c.b,255); SDL_Rect la={W/2-10,STOP_A-20,20,20}; SDL_RenderFillRect(r,&la);
+    c=(lightB==GREEN)?(SDL_Color){0,255,0,255}:(SDL_Color){255,0,0,255};
+    SDL_SetRenderDrawColor(r,c.r,c.g,c.b,255); SDL_Rect lb={W/2-10,STOP_B,20,20}; SDL_RenderFillRect(r,&lb);
+    c=(lightC==GREEN)?(SDL_Color){0,255,0,255}:(SDL_Color){255,0,0,255};
+    SDL_SetRenderDrawColor(r,c.r,c.g,c.b,255); SDL_Rect lc={STOP_C-20,H/2-10,20,20}; SDL_RenderFillRect(r,&lc);
+    c=(lightD==GREEN)?(SDL_Color){0,255,0,255}:(SDL_Color){255,0,0,255};
+    SDL_SetRenderDrawColor(r,c.r,c.g,c.b,255); SDL_Rect ld={STOP_D,H/2-10,20,20}; SDL_RenderFillRect(r,&ld);
 }
 
+/* Read vehicles from file and spawn them */
+int spawnVehiclesFromFile() {
+    FILE* f=fopen("vehicles.data","r");
+    if(!f) return 0;
+    char line[50];
+    int spawned=0;
+    while(fgets(line,sizeof(line),f)){
+        if(strlen(line)<2) continue;
+        char road=line[strlen(line)-2]; // A/B/C/D
+        addVehicle(road);
+        spawned++;
+    }
+    fclose(f);
+    // Clear file so we don't spawn same vehicles again
+    f=fopen("vehicles.data","w"); if(f) fclose(f);
+    return spawned;
+}
 
-int main() {
-    srand(time(NULL));
+/* MAIN */
+int main(){
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* w=SDL_CreateWindow("Traffic Simulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, W,H, SDL_WINDOW_SHOWN);
+    SDL_Renderer* r=SDL_CreateRenderer(w,-1,SDL_RENDERER_ACCELERATED);
 
-    // Initialize queues
-    Queue AL1, AL2, AL3, BL1, BL2, BL3, CL1, CL2, CL3, DL1, DL2, DL3;
-    initQueue(&AL1); initQueue(&AL2); initQueue(&AL3);
-    initQueue(&BL1); initQueue(&BL2); initQueue(&BL3);
-    initQueue(&CL1); initQueue(&CL2); initQueue(&CL3);
-    initQueue(&DL1); initQueue(&DL2); initQueue(&DL3);
+    int run=1, frame=0;
+    SDL_Event e;
 
-    long lastPos = 0;
-    char line[MAX_LINE];
-    int priorityMode = 0;
-    char currentGreenRoad = 'A';  
+    while(run){
+        while(SDL_PollEvent(&e)) if(e.type==SDL_QUIT) run=0;
 
-    printf("Simulator running...\n");
+        frame++;
+        if(frame%SPAWN_INTERVAL==0) spawnVehiclesFromFile();
 
-    while (1) {
+        updateLights();
+        moveVehicles();
 
-        /* -------- READ VEHICLES FROM FILE -------- */
-        FILE* file = fopen(VEHICLE_FILE, "r");
-        if (file) {
-            fseek(file, lastPos, SEEK_SET);
+        SDL_SetRenderDrawColor(r,50,50,50,255);
+        SDL_RenderClear(r);
 
-            while (fgets(line, sizeof(line), file)) {
-                char vehicle[20], road;
-                sscanf(line, "%[^:]:%c", vehicle, &road);
+        drawRoads(r);
+        drawLights(r);
+        drawVehicles(r);
 
-                int lane;
-                if (road == 'A') {
-                    int r = rand() % 100;
-                    if (r < 70) lane = 1;       // AL2 priority lane
-                    else if (r < 85) lane = 0; // AL1
-                    else lane = 2;              // AL3
-                } else {
-                    lane = rand() % 3;
+        SDL_RenderPresent(r);
+        SDL_Delay(16);
+
+        // Stop if generator stopped and no vehicles remain
+        if(head==NULL){
+            FILE* f=fopen("vehicles.data","r");
+            if(f){
+                fseek(f,0,SEEK_END);
+                if(ftell(f)==0){ // empty file
+                    fclose(f);
+                    break;
                 }
-
-                if (road == 'A') {
-                    if (lane == 0) enqueue(&AL1, vehicle);
-                    else if (lane == 1) enqueue(&AL2, vehicle);
-                    else enqueue(&AL3, vehicle);
-                } else if (road == 'B') {
-                    if (lane == 0) enqueue(&BL1, vehicle);
-                    else if (lane == 1) enqueue(&BL2, vehicle);
-                    else enqueue(&BL3, vehicle);
-                } else if (road == 'C') {
-                    if (lane == 0) enqueue(&CL1, vehicle);
-                    else if (lane == 1) enqueue(&CL2, vehicle);
-                    else enqueue(&CL3, vehicle);
-                } else if (road == 'D') {
-                    if (lane == 0) enqueue(&DL1, vehicle);
-                    else if (lane == 1) enqueue(&DL2, vehicle);
-                    else enqueue(&DL3, vehicle);
-                }
-            }
-
-            lastPos = ftell(file);
-            fclose(file);
-        }
-
-        /* -------- PRIORITY CHECK -------- */
-        if (AL2.size > 10) priorityMode = 1;
-        else if (AL2.size < 5) priorityMode = 0;
-
-        printf("\n--- New Cycle ---\n");
-        printf("AL2 size = %d | Priority = %s\n",AL2.size, priorityMode ? "ON" : "OFF");
-
-        int vehiclesdequeuedincycle=0;
-    
-        if (priorityMode) {
-               currentGreenRoad = 'A';
-            printf("Priority Mode ACTIVE: Serving ONLY AL2\n");
-            while (!isEmpty(&AL2) && AL2.size >= 5) {
-                printf("Dequeued from AL2: %s (Remaining %d)\n",dequeue(&AL2), AL2.size);
-                vehiclesdequeuedincycle++;
-                sleep(1);
-            }
-            printf("Total Green light time this cycle:%d seconds\n",vehiclesdequeuedincycle * TIME_PER_VEHICLE);
-            continue;
-        }
-              printf("Current GREEN Road: %c\n", currentGreenRoad);
-
-        Queue* currentQueues[3];
-        const char* currentNames[3];
-
-        if (currentGreenRoad == 'A') { currentQueues[0] = &AL1; currentQueues[1] = &AL2; currentQueues[2] = &AL3; currentNames[0]="AL1"; currentNames[1]="AL2"; currentNames[2]="AL3";}
-        else if (currentGreenRoad == 'B') { currentQueues[0] = &BL1; currentQueues[1] = &BL2; currentQueues[2] = &BL3; currentNames[0]="BL1"; currentNames[1]="BL2"; currentNames[2]="BL3";}
-        else if (currentGreenRoad == 'C') { currentQueues[0] = &CL1; currentQueues[1] = &CL2; currentQueues[2] = &CL3; currentNames[0]="CL1"; currentNames[1]="CL2"; currentNames[2]="CL3";}
-        else if (currentGreenRoad == 'D') { currentQueues[0] = &DL1; currentQueues[1] = &DL2; currentQueues[2] = &DL3; currentNames[0]="DL1"; currentNames[1]="DL2"; currentNames[2]="DL3";}
-
-        int totalvehicles=0;
-        for (int i=0; i<3;i++)
-        {
-            totalvehicles+=currentQueues[i]->size;
-        }
-
-        int vehicletoserve[3];
-        for(int i=0;i<3;i++){
-            if(totalvehicles==0)vehicletoserve[i]=0;
-            else vehicletoserve[i]=totalvehicles/3;
-
-            if(vehicletoserve[i]>currentQueues[i]->size)
-            vehicletoserve[i]=currentQueues[i]->size;
-
-            if(vehicletoserve[i]<1 && currentQueues[i]->size >0)
-            vehicletoserve[i]=1;
-                }
-
-        // Serve 1 vehicle per lane
-        for (int i = 0; i < 3; i++) {
-            for(int j=0; j<vehicletoserve[i];j++){
-            if (!isEmpty(currentQueues[i])) {
-                printf("Dequeued from %s: %s (Remaining %d)\n", currentNames[i], dequeue(currentQueues[i]), currentQueues[i]->size);
-                vehiclesdequeuedincycle++;
-                sleep(1);}
+                fclose(f);
             }
         }
-
-        printf("Total Green light time for this cycle :%d seconds\n",vehiclesdequeuedincycle*TIME_PER_VEHICLE);
-
-        // Rotate to next GREEN road
-        nextGreenRoad(&currentGreenRoad);
-
-        sleep(1);  // prevent CPU hogging
     }
 
+    SDL_Quit();
     return 0;
 }

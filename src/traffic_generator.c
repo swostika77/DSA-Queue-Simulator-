@@ -43,10 +43,7 @@ int main() {
     while (1) {
         char vehicle[9];
         generateVehicleNumber(vehicle);
-
         char lane=generateLane();
-
-        // Write to file
         fprintf(file, "%s:%c\n", vehicle, lane);
         fflush(file); // Ensure data is written immediately
         printf("Generated: %s:%c\n", vehicle, lane);

@@ -8,7 +8,6 @@
 #define H 800
 #define ROAD_W 180
 #define LANE_W (ROAD_W/3)
-
 #define VEH_W 30
 #define VEH_H 20
 #define SPEED 2
@@ -87,7 +86,6 @@ void addVehicle(char r, int lane) {
     enqueue(v);
 }
 
-// Count only lane 0 and 1
 int countVehicles(char road, int lane) {
     if(lane == 2) return 0; 
     int c=0;
@@ -137,7 +135,6 @@ void moveVehicles() {
         Vehicle* v=&VQ.q[idx];
         if(!v->active) continue;
 
-        // Skip lane 2 completely
         if(v->lane == 2) continue;
 
         int stop=0;
@@ -223,7 +220,7 @@ void drawVehicles(SDL_Renderer* r){
 
         if(v->lane==0) SDL_SetRenderDrawColor(r,255,165,0,255);  
         else if(v->lane==1) SDL_SetRenderDrawColor(r,0,255,255,255); 
-        else SDL_SetRenderDrawColor(r,200,200,200,255); // lane2 grey (inactive)
+        else SDL_SetRenderDrawColor(r,200,200,200,255); 
 
         SDL_Rect rect={v->x,v->y,VEH_W,VEH_H};
         SDL_RenderFillRect(r,&rect);
@@ -264,7 +261,7 @@ void spawnVehiclesFromFile(){
     while(fgets(line,sizeof(line),f)){
         if(strlen(line)<2) continue;
         char r=line[strlen(line)-2]; // A/B/C/D
-        addVehicle(r,rand()%3); // lane 0,1,2 possible
+        addVehicle(r,rand()%3); 
     }
     fclose(f);
     f=fopen("vehicles.data","w"); if(f) fclose(f);
